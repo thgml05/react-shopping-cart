@@ -18780,7 +18780,7 @@ const mockCart = [
     product: {
       id: 12,
       name: "ohgus",
-      price: 1e4,
+      price: 5e3,
       imageUrl: null,
       category: "식료품"
     }
@@ -18874,43 +18874,52 @@ const mockCart = [
     }
   }
 ];
+const mockCoupons = [
+  {
+    code: "FIXED5000",
+    description: "5,000원 할인 쿠폰",
+    discount: 5e3,
+    discountType: "fixed",
+    expirationDate: "2025-07-01",
+    id: 1,
+    minimumAmount: 1e5
+  },
+  {
+    buyQuantity: 2,
+    code: "BOGO",
+    description: "2개 구매 시 1개 무료 쿠폰",
+    discountType: "buyXgetY",
+    expirationDate: "2025-06-30",
+    getQuantity: 1,
+    id: 2
+  },
+  {
+    code: "FREESHIPPING",
+    description: "5만원 이상 구매 시 무료 배송 쿠폰",
+    discountType: "freeShipping",
+    expirationDate: "2025-08-31",
+    id: 3,
+    minimumAmount: 5e4
+  },
+  {
+    availableTime: {
+      start: "04:00:00",
+      end: "07:00:00"
+    },
+    code: "MIRACLESALE",
+    description: "미라클모닝 30% 할인 쿠폰",
+    discount: 30,
+    discountType: "percentage",
+    expirationDate: "2025-07-31",
+    id: 4
+  }
+];
 const handlers = [
   http.get(`/cart-items`, () => {
     return HttpResponse.json({
       content: mockCart
     });
   }),
-  // http.post(
-  //   `${import.meta.env.VITE_API_BASE_URL}/cart-items`,
-  //   async ({ request }) => {
-  //     const body = (await request.json()) as {
-  //       productId: number;
-  //       quantity: number;
-  //     };
-  //     const existingItem = cartItems.find(
-  //       (item) => item.productId === body.productId
-  //     );
-  //     if (existingItem) {
-  //       existingItem.quantity += body.quantity;
-  //       const product = mockProducts.find(
-  //         (p) => p.id === existingItem.productId
-  //       );
-  //       return HttpResponse.json({
-  //         ...existingItem,
-  //         product: product || null,
-  //       });
-  //     } else {
-  //       const newCartItem = {
-  //         id: cartItemIdCounter++,
-  //         productId: body.productId,
-  //         quantity: body.quantity,
-  //         product: mockProducts.find((p) => p.id === body.productId) || null,
-  //       };
-  //       cartItems.push(newCartItem);
-  //       return HttpResponse.json(newCartItem);
-  //     }
-  //   }
-  // ),
   http.delete(`/cart-items/:cartItemId`, ({ params }) => {
     const cartItemId = parseInt(params.cartItemId);
     const itemIndex = mockCart.findIndex((item) => item.id === cartItemId);
@@ -18937,6 +18946,11 @@ const handlers = [
     return HttpResponse.json({
       ...item,
       product: product || null
+    });
+  }),
+  http.get("/coupons", () => {
+    return HttpResponse.json({
+      content: mockCoupons
     });
   })
 ];
