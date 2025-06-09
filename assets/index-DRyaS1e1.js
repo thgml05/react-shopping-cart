@@ -15437,12 +15437,12 @@ function CartListTitle({
     /* @__PURE__ */ jsx$1(Text, { varient: "caption", whiteSpace: "pre-line", textAlign: "left", children: description })
   ] });
 }
-const Logo = `./icons/logo.svg`;
-const Minus = `./icons/minus.svg`;
-const Plus = `./icons/plus.svg`;
-const Info = `./icons/info.svg`;
-const Back = `./icons/back.svg`;
-const Default = `./images/default.png`;
+const Logo = `/react-shopping-cart/icons/logo.svg`;
+const Minus = `/react-shopping-cart/icons/minus.svg`;
+const Plus = `/react-shopping-cart/icons/plus.svg`;
+const Info = `/react-shopping-cart/icons/info.svg`;
+const Back = `/react-shopping-cart/icons/back.svg`;
+const Default = `/react-shopping-cart/images/default.png`;
 const CartItemStyle = css`
   border-top: 1px solid #e0e0e0;
   list-style: none;
