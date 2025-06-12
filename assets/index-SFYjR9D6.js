@@ -14880,24 +14880,25 @@ function Toast({ children }) {
 }
 const ToastContext = reactExports.createContext(null);
 function ToastProvider({ children }) {
-  const [toast, setToast] = reactExports.useState("");
-  const [isVisible, setIsVisible] = reactExports.useState(false);
-  const timerRef = reactExports.useRef();
-  const showToast = (msg) => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    setIsVisible(false);
-    setToast(msg);
-    setIsVisible(true);
-    timerRef.current = window.setTimeout(() => {
-      setIsVisible(false);
-      timerRef.current = void 0;
+  const [toasts, setToasts] = reactExports.useState([]);
+  const timersRef = reactExports.useRef({});
+  const nextId = reactExports.useRef(0);
+  const showToast = (message) => {
+    Object.values(timersRef.current).forEach(clearTimeout);
+    timersRef.current = {};
+    setToasts([]);
+    const id2 = nextId.current++;
+    setToasts([{ id: id2, message }]);
+    timersRef.current[id2] = window.setTimeout(() => {
+      setToasts((prev2) => prev2.filter((t2) => t2.id !== id2));
+      delete timersRef.current[id2];
     }, 3e3);
   };
-  return /* @__PURE__ */ jsxs(ToastContext.Provider, { value: { toast, isVisible, setToast, showToast }, children: [
+  return /* @__PURE__ */ jsxs(ToastContext.Provider, { value: { showToast }, children: [
     children,
-    isVisible && reactDomExports.createPortal(/* @__PURE__ */ jsx$1(Toast, { children: toast }), document.body)
+    toasts.map(
+      (t2) => reactDomExports.createPortal(/* @__PURE__ */ jsx$1(Toast, { children: t2.message }, t2.id), document.body)
+    )
   ] });
 }
 function useToastContext() {
@@ -14907,15 +14908,21 @@ function useToastContext() {
   }
   return context;
 }
-const getLocalStorage = (key) => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : [];
-};
-const setLocalStorage = (key, value) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+function useStorageState(key, defaultValue) {
+  const [state, setState] = reactExports.useState(() => {
+    const stored = window.localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : defaultValue;
+  });
+  reactExports.useEffect(() => {
+    window.localStorage.setItem(key, JSON.stringify(state));
+  }, [key, state]);
+  return [state, setState];
+}
 function useCartList() {
-  const [cartList, setCartList] = reactExports.useState([]);
+  const [cartList, setCartList] = useStorageState(
+    "cartList",
+    []
+  );
   const [error, setError] = reactExports.useState("");
   const [isLoading, setIsLoading] = reactExports.useState(false);
   const { showToast } = useToastContext();
@@ -14925,13 +14932,9 @@ function useCartList() {
   const loadCartList = async () => {
     setIsLoading(true);
     try {
-      const localCartList = getLocalStorage("cartList");
-      if (localCartList.length > 0) {
-        setCartList(localCartList);
-      } else {
+      if (cartList.length === 0) {
         const response = await cart.getCartList();
         setCartList(response);
-        setLocalStorage("cartList", response);
       }
     } catch (error2) {
       setError(ERROR_MESSAGE.CART_LIST);
@@ -14947,7 +14950,6 @@ function useCartList() {
         (item) => item.id === cartItem.id ? { ...item, quantity: item.quantity + 1 } : item
       );
       setCartList(increasedCartList);
-      setLocalStorage("cartList", increasedCartList);
     } catch (error2) {
       setError(ERROR_MESSAGE.INCREASE_CART_ITEM);
       showToast(ERROR_MESSAGE.INCREASE_CART_ITEM);
@@ -14960,7 +14962,6 @@ function useCartList() {
         (item) => item.id === cartItem.id ? { ...item, quantity: item.quantity - 1 } : item
       );
       setCartList(decreasedCartList);
-      setLocalStorage("cartList", decreasedCartList);
     } catch (error2) {
       setError(ERROR_MESSAGE.DECREASE_CART_ITEM);
       showToast(ERROR_MESSAGE.DECREASE_CART_ITEM);
@@ -14971,7 +14972,6 @@ function useCartList() {
       await cart.deleteCartItem(cartItemId);
       const deletedCartList = cartList.filter((item) => item.id !== cartItemId);
       setCartList(deletedCartList);
-      setLocalStorage("cartList", deletedCartList);
     } catch (error2) {
       setError(ERROR_MESSAGE.DELETE_CART_ITEM);
       showToast(ERROR_MESSAGE.DELETE_CART_ITEM);
@@ -14988,56 +14988,50 @@ function useCartList() {
   };
 }
 function useSelect(cartList) {
-  const [selectedItems, setSelectedItems] = reactExports.useState([]);
+  const [selectedItems, setSelectedItems] = useStorageState(
+    "selectedItems",
+    []
+  );
   const checkCartItemIds = cartList.filter((cartItem) => selectedItems.includes(cartItem.id)).map((cartItem) => cartItem.id);
   const isAllSelected = checkCartItemIds.length === cartList.length;
   const AllCartItems = cartList.map((cartItem) => cartItem.id);
   const initialLoadRef = reactExports.useRef(true);
   reactExports.useEffect(() => {
-    const localSelectedItems = getLocalStorage("selectedItems");
-    if (cartList.length > 0 && initialLoadRef.current) {
-      if (localSelectedItems.length > 0) {
-        setSelectedItems(localSelectedItems);
-      } else {
+    if (cartList.length === 0)
+      return;
+    if (initialLoadRef.current) {
+      if (selectedItems.length === 0) {
         setSelectedItems(AllCartItems);
-        setLocalStorage("selectedItems", AllCartItems);
       }
       initialLoadRef.current = false;
     } else {
       if (checkCartItemIds.length > 0) {
         setSelectedItems(checkCartItemIds);
-        setLocalStorage("selectedItems", checkCartItemIds);
-      } else {
-        setSelectedItems(localSelectedItems);
-        setLocalStorage("selectedItems", localSelectedItems);
       }
     }
   }, [cartList.length]);
-  const handleSelectItem = (cartItemId) => {
+  const selectItem = (cartItemId) => {
     if (selectedItems.includes(cartItemId)) {
       const filtered = selectedItems.filter((item) => item !== cartItemId);
       setSelectedItems(filtered);
-      setLocalStorage("selectedItems", filtered);
     } else {
       const newSelectedItems = [...selectedItems, cartItemId];
       setSelectedItems(newSelectedItems);
-      setLocalStorage("selectedItems", newSelectedItems);
     }
   };
-  const handleSelectAllItems = () => {
+  const selectAllItems = () => {
     if (isAllSelected) {
       setSelectedItems([]);
-      setLocalStorage("selectedItems", []);
     } else {
       setSelectedItems(AllCartItems);
-      setLocalStorage("selectedItems", AllCartItems);
     }
   };
   return {
     selectedItems,
+    setSelectedItems,
     isAllSelected,
-    handleSelectItem,
-    handleSelectAllItems
+    selectItem,
+    selectAllItems
   };
 }
 const cartPrice = {
@@ -15071,9 +15065,10 @@ const CartProvider = ({ children }) => {
   } = useCartList();
   const {
     selectedItems,
+    setSelectedItems,
     isAllSelected,
-    handleSelectItem,
-    handleSelectAllItems
+    selectItem,
+    selectAllItems
   } = useSelect(data);
   const subTotal = cartPrice.totalPrice(data, selectedItems);
   const deliveryFee = subTotal >= CART.FREE_DELIVERY_THRESHOLD ? 0 : CART.DELIVERY_FEE;
@@ -15091,11 +15086,7 @@ const CartProvider = ({ children }) => {
   const clearCart = () => {
     const items = data.filter((item) => !selectedItems.includes(item.id));
     setCartList(items);
-    setLocalStorage(
-      "selectedItems",
-      items.map((item) => item.id)
-    );
-    setLocalStorage("cartList", items);
+    setSelectedItems([]);
     selectedItems.forEach((id2) => {
       deleteCartItem(id2);
     });
@@ -15112,9 +15103,10 @@ const CartProvider = ({ children }) => {
         deleteCartItem,
         clearCart,
         selectedItems,
+        setSelectedItems,
         isAllSelected,
-        handleSelectItem,
-        handleSelectAllItems,
+        selectItem,
+        selectAllItems,
         subTotal,
         deliveryFee,
         totalBeforeDiscount,
@@ -15437,12 +15429,6 @@ function CartListTitle({
     /* @__PURE__ */ jsx$1(Text, { varient: "caption", whiteSpace: "pre-line", textAlign: "left", children: description })
   ] });
 }
-const Logo = `/react-shopping-cart/icons/logo.svg`;
-const Minus = `/react-shopping-cart/icons/minus.svg`;
-const Plus = `/react-shopping-cart/icons/plus.svg`;
-const Info = `/react-shopping-cart/icons/info.svg`;
-const Back = `/react-shopping-cart/icons/back.svg`;
-const Default = `/react-shopping-cart/images/default.png`;
 const CartItemStyle = css`
   border-top: 1px solid #e0e0e0;
   list-style: none;
@@ -15515,13 +15501,12 @@ const ControllerButton = css`
   background-color: #fff;
   cursor: pointer;
 `;
-function OrderCartItem({ item }) {
-  const {
-    quantity,
-    product: { imageUrl, name, price }
-  } = item;
+function OrderCartItem({
+  quantity,
+  product: { imageUrl, name, price }
+}) {
   return /* @__PURE__ */ jsx$1("li", { css: CartItemStyle, children: /* @__PURE__ */ jsxs("div", { css: CartItemBodyStyle, children: [
-    /* @__PURE__ */ jsx$1("img", { css: ImageStyle, src: imageUrl || Default, alt: name }),
+    /* @__PURE__ */ jsx$1("img", { css: ImageStyle, src: imageUrl, alt: name }),
     /* @__PURE__ */ jsxs("div", { css: CartInfo, children: [
       /* @__PURE__ */ jsx$1(Text, { varient: "caption", children: name }),
       /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
@@ -15664,11 +15649,11 @@ const Modal = ({
   position: position2 = "center",
   title,
   showCloseButton = true,
-  onClose
+  onCloseButtonClick
 }) => {
   const handleBackdropClick = (e2) => {
     if (e2.target === e2.currentTarget) {
-      onClose();
+      onCloseButtonClick();
     }
   };
   return /* @__PURE__ */ jsx$1(Fragment, { children: /* @__PURE__ */ jsx$1(
@@ -15679,12 +15664,36 @@ const Modal = ({
       children: /* @__PURE__ */ jsxs("div", { css: ModalContainerStyle(position2), children: [
         /* @__PURE__ */ jsxs("div", { css: ModalHeaderStyle, children: [
           /* @__PURE__ */ jsx$1(Text, { varient: "subtitle", textAlign: "left", children: title }),
-          /* @__PURE__ */ jsx$1("button", { css: CloseButtonStyle(showCloseButton), onClick: onClose, children: "X" })
+          /* @__PURE__ */ jsx$1(
+            "button",
+            {
+              css: CloseButtonStyle(showCloseButton),
+              onClick: onCloseButtonClick,
+              children: "X"
+            }
+          )
         ] }),
         children
       ] })
     }
   ) });
+};
+const getCouponAdditionalConditions = (coupon) => {
+  const { minimumAmount, availableTime } = coupon;
+  const additionalCouponConditions = [];
+  if (minimumAmount) {
+    additionalCouponConditions.push(
+      `최소 주문 금액: ${minimumAmount.toLocaleString()}원`
+    );
+  }
+  if (availableTime) {
+    const start = availableTime.start.slice(1, 2);
+    const end = availableTime.end.slice(1, 2);
+    additionalCouponConditions.push(
+      `사용 가능 시간: 오전 ${start}시부터 ${end}시까지`
+    );
+  }
+  return additionalCouponConditions;
 };
 const CouponItemStyle = (isDisabled) => css`
   display: flex;
@@ -15720,16 +15729,7 @@ function CouponItem({
 }) {
   const { description, expirationDate } = coupon;
   const [year, month, day] = expirationDate.split("-");
-  const secondLine = [];
-  if (coupon.minimumAmount) {
-    secondLine.push(
-      `최소 주문 금액: ${coupon.minimumAmount.toLocaleString()}원`
-    );
-  } else if (coupon.availableTime) {
-    const start = coupon.availableTime.start.slice(1, 2);
-    const end = coupon.availableTime.end.slice(1, 2);
-    secondLine.push(`사용 가능 시간: 오전 ${start}시부터 ${end}시까지`);
-  }
+  const additionalCouponConditions = getCouponAdditionalConditions(coupon);
   return /* @__PURE__ */ jsxs("div", { css: CouponItemStyle(isDisabled), children: [
     /* @__PURE__ */ jsxs("div", { css: CouponItemHeaderStyle, children: [
       /* @__PURE__ */ jsx$1(
@@ -15754,10 +15754,17 @@ function CouponItem({
         day,
         "일"
       ] }),
-      secondLine.map((line2, index) => /* @__PURE__ */ jsx$1(Text, { varient: "caption", textAlign: "left", children: line2 }, index))
+      additionalCouponConditions.map((line2, index) => /* @__PURE__ */ jsx$1(Text, { varient: "caption", textAlign: "left", children: line2 }, index))
     ] })
   ] });
 }
+const baseUrl = "/react-shopping-cart/";
+const Logo = baseUrl + `icons/logo.svg`;
+const Minus = baseUrl + `icons/minus.svg`;
+const Plus = baseUrl + "icons/plus.svg";
+const Info = baseUrl + "icons/info.svg";
+const Back = baseUrl + "icons/back.svg";
+const Default = baseUrl + `images/default.png`;
 const InfoMessageStyle = css`
   display: flex;
   align-items: center;
@@ -15772,28 +15779,41 @@ function InfoMessage({ message }) {
     /* @__PURE__ */ jsx$1(Text, { varient: "caption", children: message })
   ] });
 }
+const fixedDiscount = ({ discountAmount }) => {
+  return discountAmount;
+};
+const percentageDiscount = ({
+  discountAmount,
+  remainingPrice
+}) => {
+  return Math.floor(remainingPrice * (discountAmount / 100));
+};
+const buyXgetYDiscount = ({ cartItems }) => {
+  return Math.max(...cartItems.map((item) => item.product.price));
+};
+const discountStrategy = {
+  fixed: fixedDiscount,
+  percentage: percentageDiscount,
+  buyXgetY: buyXgetYDiscount
+};
 function simulateCombo(cartItem, combo, subTotal, baseShipping) {
   let remaining = subTotal;
   let totalDiscount = 0;
   let shipping = baseShipping;
   const breakdown = {};
-  const maxUnitPrice = Math.max(...cartItem.map((item) => item.product.price));
   for (const c2 of combo) {
-    if (c2.discountType === "fixed") {
-      totalDiscount += c2.discount;
-      remaining -= c2.discount;
-    } else if (c2.discountType === "percentage") {
-      totalDiscount += Math.floor(remaining * (c2.discount / 100));
-      remaining -= Math.floor(remaining * (c2.discount / 100));
-    } else if (c2.discountType === "buyXgetY") {
-      totalDiscount += maxUnitPrice;
-      remaining -= maxUnitPrice;
+    if (c2.discountType === "freeShipping") {
+      shipping = 0;
+      continue;
     }
+    const discountAmount = discountStrategy[c2.discountType]({
+      discountAmount: c2.discount,
+      remainingPrice: remaining,
+      cartItems: cartItem
+    });
+    totalDiscount += discountAmount;
+    remaining -= discountAmount;
     breakdown[c2.code] = remaining;
-  }
-  const fs = combo.find((c2) => c2.discountType === "freeShipping");
-  if (fs) {
-    shipping = 0;
   }
   const PriceWithDiscount = Math.min(...Object.values(breakdown));
   return {
@@ -15806,18 +15826,11 @@ function simulateCombo(cartItem, combo, subTotal, baseShipping) {
   };
 }
 function generateCombos(couponList) {
-  const combos = [];
-  for (const coupon of couponList) {
-    combos.push([coupon]);
-  }
-  for (let i = 0; i < couponList.length; i++) {
-    for (let j = 0; j < couponList.length; j++) {
-      if (i === j)
-        continue;
-      combos.push([couponList[i], couponList[j]]);
-    }
-  }
-  return combos;
+  const singleCombos = couponList.map((coupon) => [coupon]);
+  const doubleCombos = couponList.flatMap(
+    (c1, i) => couponList.filter((_, j) => j !== i).map((c2) => [c1, c2])
+  );
+  return [...singleCombos, ...doubleCombos];
 }
 function getBestCouponCombo(checkedCoupons, cartItems, couponList, subTotal, baseShippingFee) {
   let combos = [];
@@ -15881,10 +15894,18 @@ const loadingStateStyle = css`
 const LoadingSpinner = () => {
   return /* @__PURE__ */ jsx$1("div", { css: loadingStateStyle, children: /* @__PURE__ */ jsx$1("div", { className: "loading-spinner" }) });
 };
+const COUPON = {
+  MAX_COUPON_COUNT: 2
+};
+const toggleArrayItems = (array, item) => {
+  if (array.includes(item))
+    return array.filter((x2) => x2 !== item);
+  return [...array, item];
+};
 function CouponModal({
   isLoading,
   isOpen,
-  onClose,
+  onCloseButtonClick,
   validatedCouponList: validatedCouponList2,
   checkedCoupon,
   onCouponAccept
@@ -15895,9 +15916,9 @@ function CouponModal({
     subTotal,
     deliveryFee
   } = useCartContext();
-  const [tempCoupon, setTempCoupon] = reactExports.useState(checkedCoupon);
+  const [draftSelectedCouponIds, setDraftSelectedCouponIds] = reactExports.useState(checkedCoupon);
   const modalResult = getBestCouponCombo(
-    tempCoupon,
+    draftSelectedCouponIds,
     cartItems.filter((item) => selectedItems.includes(item.id)),
     validatedCouponList2,
     subTotal,
@@ -15905,46 +15926,57 @@ function CouponModal({
   );
   reactExports.useEffect(() => {
     if (isOpen) {
-      setTempCoupon(checkedCoupon);
+      setDraftSelectedCouponIds(checkedCoupon);
     }
   }, [isOpen, checkedCoupon]);
-  const handleToggle = (id2) => {
-    if (tempCoupon === null) {
-      setTempCoupon([id2]);
+  const handleCouponCheck = (id2) => {
+    if (draftSelectedCouponIds === null) {
+      setDraftSelectedCouponIds([id2]);
       return;
     }
-    const newTempCoupons = tempCoupon.includes(id2) ? tempCoupon.filter((x2) => x2 !== id2) : [...tempCoupon, id2];
-    if (newTempCoupons.length > 2) {
+    const newDraftSelectedCouponIds = toggleArrayItems(
+      draftSelectedCouponIds,
+      id2
+    );
+    if (newDraftSelectedCouponIds.length > COUPON.MAX_COUPON_COUNT) {
       alert("최대 2개의 쿠폰만 적용할 수 있습니다.");
       return;
     }
-    setTempCoupon(newTempCoupons);
+    setDraftSelectedCouponIds(newDraftSelectedCouponIds);
   };
-  return /* @__PURE__ */ jsxs(Modal, { isOpen, onClose, title: "쿠폰을 선택해 주세요", children: [
-    isLoading && /* @__PURE__ */ jsx$1(LoadingSpinner, {}),
-    !isLoading && /* @__PURE__ */ jsxs(Fragment, { children: [
-      /* @__PURE__ */ jsx$1(InfoMessage, { message: "쿠폰은 최대 2개까지 사용할 수 있습니다." }),
-      validatedCouponList2.map((coupon) => /* @__PURE__ */ jsx$1(
-        CouponItem,
-        {
-          coupon,
-          isChecked: (tempCoupon == null ? void 0 : tempCoupon.includes(coupon.id)) ?? false,
-          onCheck: handleToggle,
-          isDisabled: coupon.isExpired
-        },
-        coupon.id
-      )),
-      /* @__PURE__ */ jsx$1(
-        Button,
-        {
-          color: "gray",
-          variant: "secondary",
-          onClick: () => onCouponAccept(tempCoupon ?? []),
-          children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: `총 ${modalResult == null ? void 0 : modalResult.totalDiscount.toLocaleString()}원 할인 쿠폰 사용하기` })
-        }
-      )
-    ] })
-  ] });
+  return /* @__PURE__ */ jsxs(
+    Modal,
+    {
+      isOpen,
+      onCloseButtonClick,
+      title: "쿠폰을 선택해 주세요",
+      children: [
+        isLoading && /* @__PURE__ */ jsx$1(LoadingSpinner, {}),
+        !isLoading && /* @__PURE__ */ jsxs(Fragment, { children: [
+          /* @__PURE__ */ jsx$1(InfoMessage, { message: "쿠폰은 최대 2개까지 사용할 수 있습니다." }),
+          validatedCouponList2.map((coupon) => /* @__PURE__ */ jsx$1(
+            CouponItem,
+            {
+              coupon,
+              isChecked: (draftSelectedCouponIds == null ? void 0 : draftSelectedCouponIds.includes(coupon.id)) ?? false,
+              onCheck: handleCouponCheck,
+              isDisabled: coupon.isExpired
+            },
+            coupon.id
+          )),
+          /* @__PURE__ */ jsx$1(
+            Button,
+            {
+              color: "gray",
+              variant: "secondary",
+              onClick: () => onCouponAccept(draftSelectedCouponIds ?? []),
+              children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: `총 ${modalResult == null ? void 0 : modalResult.totalDiscount.toLocaleString()}원 할인 쿠폰 사용하기` })
+            }
+          )
+        ] })
+      ]
+    }
+  );
 }
 const TEXT = {
   DELETE: "삭제",
@@ -16026,6 +16058,18 @@ const CartPriceInfoStyle = css`
   width: 100%;
   padding: 1.2rem 0;
 `;
+const CartPriceInfoRow = ({
+  title,
+  price
+}) => {
+  return /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
+    /* @__PURE__ */ jsx$1(Text, { varient: "body", children: title }),
+    /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
+      price.toLocaleString(),
+      "원"
+    ] })
+  ] });
+};
 function CartPriceCouponInfo({
   subTotal,
   totalDiscount,
@@ -16040,36 +16084,12 @@ function CartPriceCouponInfo({
       }
     ),
     /* @__PURE__ */ jsxs("div", { css: CartPriceContainerStyle, children: [
-      /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-        /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.ORDER_PRICE }),
-        /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-          subTotal.toLocaleString(),
-          "원"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-        /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.COUPON_PRICE }),
-        /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-          "-",
-          totalDiscount.toLocaleString(),
-          "원"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-        /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.DELIVERY_FEE }),
-        /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-          deliveryFee.toLocaleString(),
-          "원"
-        ] })
-      ] })
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.ORDER_PRICE, price: subTotal }),
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.COUPON_PRICE, price: totalDiscount }),
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.DELIVERY_FEE, price: deliveryFee }),
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.TOTAL_PRICE, price: finalPrice })
     ] }),
-    /* @__PURE__ */ jsx$1("div", { css: CartPriceContainerStyle, children: /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-      /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.TOTAL_PRICE }),
-      /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-        finalPrice.toLocaleString(),
-        "원"
-      ] })
-    ] }) })
+    /* @__PURE__ */ jsx$1("div", { css: CartPriceContainerStyle, children: /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.TOTAL_PRICE, price: finalPrice }) })
   ] });
 }
 const ContainerLayoutStyle = css`
@@ -16105,7 +16125,7 @@ function isExpired(expirationDate) {
   const [y2, m2, d2] = expirationDate.split("-").map(Number);
   return today <= new Date(y2, m2 - 1, d2);
 }
-function isMiracleMorning(start, end) {
+function isCurrentTimeInRange(start, end) {
   const now = /* @__PURE__ */ new Date();
   const startDate = new Date(now);
   startDate.setHours(
@@ -16128,22 +16148,48 @@ function validateCoupons(couponList, subTotal, selectedItems) {
   const validatedCouponList2 = [];
   couponList.forEach((coupon) => {
     var _a, _b;
-    let expiredFlag = !isExpired(coupon.expirationDate);
+    let expired = !isExpired(coupon.expirationDate);
     if (coupon.description.includes("미라클모닝")) {
-      expiredFlag = !isMiracleMorning(
+      expired = !isCurrentTimeInRange(
         ((_a = coupon.availableTime) == null ? void 0 : _a.start) || "",
         ((_b = coupon.availableTime) == null ? void 0 : _b.end) || ""
       );
     }
     if (coupon.minimumAmount !== void 0 && !isMinimumAmount(coupon.minimumAmount, subTotal)) {
-      expiredFlag = true;
+      expired = true;
     }
     if (coupon.buyQuantity !== void 0 && coupon.getQuantity !== void 0) {
-      expiredFlag = !isQuantity(selectedItems);
+      expired = !isQuantity(selectedItems);
     }
-    validatedCouponList2.push({ ...coupon, isExpired: expiredFlag });
+    validatedCouponList2.push({ ...coupon, isExpired: expired });
   });
   return validatedCouponList2;
+}
+function computeOrderSummary({
+  validatedCouponList: validatedCouponList2,
+  checkedCoupons,
+  isRemotedAreaChecked
+}) {
+  const cart2 = useCartContext();
+  const availableCouponList = getAvailableCoupons(validatedCouponList2);
+  const comboResult = getBestCouponCombo(
+    checkedCoupons,
+    cart2.selectedCartItems,
+    availableCouponList,
+    cart2.subTotal,
+    cart2.deliveryFee
+  );
+  const hasFreeShipping = hasFreeShippingCoupon((comboResult == null ? void 0 : comboResult.combo) ?? []);
+  const deliveryFee = calculateShippingFee(
+    cart2.deliveryFee,
+    hasFreeShipping,
+    isRemotedAreaChecked
+  );
+  const finalPrice = calculateFinalPrice(
+    (comboResult == null ? void 0 : comboResult.PriceWithDiscount) ?? 0,
+    deliveryFee
+  );
+  return { comboResult, deliveryFee, finalPrice };
 }
 function OrderCheckPage() {
   const navigate = useNavigate();
@@ -16157,35 +16203,22 @@ function OrderCheckPage() {
   const [isCouponModalOpen, setIsCouponModalOpen] = reactExports.useState(false);
   const [isRemotedAreaChecked, setIsRemotedAreaChecked] = reactExports.useState(false);
   const [checkedCoupons, setCheckedCoupons] = reactExports.useState(null);
-  const availableCouponList = getAvailableCoupons(validatedCouponList);
-  const result = getBestCouponCombo(
+  const { comboResult, deliveryFee, finalPrice } = computeOrderSummary({
+    validatedCouponList,
     checkedCoupons,
-    cart2.selectedCartItems,
-    availableCouponList,
-    cart2.subTotal,
-    cart2.deliveryFee
-  );
-  const hasFreeShipping = hasFreeShippingCoupon((result == null ? void 0 : result.combo) ?? []);
-  const deliveryFee = calculateShippingFee(
-    cart2.deliveryFee,
-    hasFreeShipping,
     isRemotedAreaChecked
-  );
-  const finalPrice = calculateFinalPrice(
-    (result == null ? void 0 : result.PriceWithDiscount) ?? 0,
-    deliveryFee
-  );
-  const handleCouponModalOpen = () => {
-    setCheckedCoupons(result.combo.map((coupon) => coupon.id));
+  });
+  const couponModalOpen = () => {
+    setCheckedCoupons(comboResult == null ? void 0 : comboResult.combo.map((coupon) => coupon.id));
     setIsCouponModalOpen(true);
   };
-  const handleCouponModalClose = () => {
+  const couponModalClose = () => {
     setIsCouponModalOpen(false);
   };
-  const handleRemotedAreaChange = () => {
+  const remotedAreaChange = () => {
     setIsRemotedAreaChecked(!isRemotedAreaChecked);
   };
-  const handleCouponAccept = (couponIds) => {
+  const couponAccept = (couponIds) => {
     setCheckedCoupons(couponIds);
     setIsCouponModalOpen(false);
   };
@@ -16200,21 +16233,24 @@ function OrderCheckPage() {
 최종 결제 금액을 확인해주세요.`
         }
       ),
-      /* @__PURE__ */ jsx$1("ul", { css: OrderCheckCartListStyle, children: cart2.selectedCartItems.map((item) => /* @__PURE__ */ jsx$1(OrderCartItem, { item }, item.id)) }),
-      /* @__PURE__ */ jsx$1(
-        Button,
+      /* @__PURE__ */ jsx$1("ul", { css: OrderCheckCartListStyle, children: cart2.selectedCartItems.map((item) => /* @__PURE__ */ jsx$1(
+        OrderCartItem,
         {
-          color: "white",
-          variant: "secondary",
-          onClick: handleCouponModalOpen,
-          children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: "쿠폰 적용" })
-        }
-      ),
+          quantity: item.quantity,
+          product: {
+            imageUrl: item.product.imageUrl || Default,
+            name: item.product.name,
+            price: item.product.price
+          }
+        },
+        item.id
+      )) }),
+      /* @__PURE__ */ jsx$1(Button, { color: "white", variant: "secondary", onClick: couponModalOpen, children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: "쿠폰 적용" }) }),
       /* @__PURE__ */ jsx$1(
         DeliverInfo,
         {
           isChecked: isRemotedAreaChecked,
-          onCheckboxChange: handleRemotedAreaChange
+          onCheckboxChange: remotedAreaChange
         }
       ),
       /* @__PURE__ */ jsx$1(
@@ -16222,7 +16258,7 @@ function OrderCheckPage() {
         {
           subTotal: cart2.subTotal,
           deliveryFee,
-          totalDiscount: (result == null ? void 0 : result.totalDiscount) ?? 0,
+          totalDiscount: (comboResult == null ? void 0 : comboResult.totalDiscount) ?? 0,
           finalPrice
         }
       )
@@ -16245,22 +16281,19 @@ function OrderCheckPage() {
       {
         isLoading: couponList.isLoading,
         isOpen: isCouponModalOpen,
-        onClose: handleCouponModalClose,
+        onCloseButtonClick: couponModalClose,
         validatedCouponList,
         checkedCoupon: checkedCoupons ?? [],
-        onCouponAccept: handleCouponAccept
+        onCouponAccept: couponAccept
       }
     )
   ] });
 }
 function CartItem({
   cartItem,
-  selected,
-  onSelectChange,
-  onIncreaseClick,
-  onDecreaseClick,
-  onDeleteClick
+  selected
 }) {
+  const cart2 = useCartContext();
   return /* @__PURE__ */ jsxs("li", { css: CartItemStyle, children: [
     /* @__PURE__ */ jsxs("div", { css: ListItemHeaderStyle, children: [
       /* @__PURE__ */ jsx$1(
@@ -16269,14 +16302,14 @@ function CartItem({
           type: "checkbox",
           css: CheckboxStyle$1,
           checked: selected,
-          onChange: () => onSelectChange(cartItem.id)
+          onChange: () => cart2.selectItem(cartItem.id)
         }
       ),
       /* @__PURE__ */ jsx$1(
         "button",
         {
           css: DeleteButtonStyle,
-          onClick: () => onDeleteClick(cartItem.id),
+          onClick: () => cart2.deleteCartItem(cartItem.id),
           children: /* @__PURE__ */ jsx$1(Text, { varient: "caption", children: TEXT.DELETE })
         }
       )
@@ -16301,7 +16334,7 @@ function CartItem({
             "button",
             {
               css: ControllerButton,
-              onClick: cartItem.quantity === 1 ? () => onDeleteClick(cartItem.id) : () => onDecreaseClick(cartItem),
+              onClick: cartItem.quantity === 1 ? () => cart2.deleteCartItem(cartItem.id) : () => cart2.decreaseCartItem(cartItem),
               children: /* @__PURE__ */ jsx$1("img", { src: Minus, alt: "마이너스 버튼" })
             }
           ),
@@ -16310,7 +16343,7 @@ function CartItem({
             "button",
             {
               css: ControllerButton,
-              onClick: () => onIncreaseClick(cartItem),
+              onClick: () => cart2.increaseCartItem(cartItem),
               children: /* @__PURE__ */ jsx$1("img", { src: Plus, alt: "플러스 버튼" })
             }
           )
@@ -16332,28 +16365,16 @@ function CartPriceInfo({
       }
     ),
     /* @__PURE__ */ jsxs("div", { css: CartPriceContainerStyle, children: [
-      /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-        /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.ORDER_PRICE }),
-        /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-          subTotal.toLocaleString(),
-          "원"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-        /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.DELIVERY_FEE }),
-        /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-          deliveryFee.toLocaleString(),
-          "원"
-        ] })
-      ] })
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.ORDER_PRICE, price: subTotal }),
+      /* @__PURE__ */ jsx$1(CartPriceInfoRow, { title: TEXT.DELIVERY_FEE, price: deliveryFee })
     ] }),
-    /* @__PURE__ */ jsx$1("div", { css: CartPriceContainerStyle, children: /* @__PURE__ */ jsxs("div", { css: CartPriceInfoStyle, children: [
-      /* @__PURE__ */ jsx$1(Text, { varient: "body", children: TEXT.TOTAL_PRICE }),
-      /* @__PURE__ */ jsxs(Text, { varient: "title", children: [
-        totalBeforeDiscount.toLocaleString(),
-        "원"
-      ] })
-    ] }) })
+    /* @__PURE__ */ jsx$1("div", { css: CartPriceContainerStyle, children: /* @__PURE__ */ jsx$1(
+      CartPriceInfoRow,
+      {
+        title: TEXT.TOTAL_PRICE,
+        price: totalBeforeDiscount
+      }
+    ) })
   ] });
 }
 const EmptyCartContainerStyle = css`
@@ -16421,18 +16442,14 @@ function CartPage() {
         CartListHeader,
         {
           allSelected: cart2.isAllSelected,
-          onAllSelectChange: cart2.handleSelectAllItems
+          onAllSelectChange: cart2.selectAllItems
         }
       ),
       /* @__PURE__ */ jsx$1("ul", { css: CartListStyle, children: cart2.data.map((cartItem) => /* @__PURE__ */ jsx$1(
         CartItem,
         {
           cartItem,
-          selected: cart2.selectedItems.includes(cartItem.id),
-          onSelectChange: cart2.handleSelectItem,
-          onIncreaseClick: cart2.increaseCartItem,
-          onDecreaseClick: cart2.decreaseCartItem,
-          onDeleteClick: cart2.deleteCartItem
+          selected: cart2.selectedItems.includes(cartItem.id)
         },
         cartItem.id
       )) }),
@@ -16484,12 +16501,11 @@ const OrderPriceContainerStyle = css`
   gap: 1.2rem;
 `;
 function OrderCompletePage() {
-  const { clearCart } = useCartContext();
-  const { typeCount, totalCount } = useCartContext();
+  const { typeCount, totalCount, clearCart } = useCartContext();
   const location = useLocation();
   const navigate = useNavigate();
   const { finalPrice } = location.state;
-  const handleNavigate = () => {
+  const goToHome = () => {
     clearCart();
     navigate("/");
   };
@@ -16515,7 +16531,7 @@ function OrderCompletePage() {
         ] })
       ] })
     ] }) }),
-    /* @__PURE__ */ jsx$1(Button, { color: "black", variant: "primary", onClick: handleNavigate, children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: "장바구니로 돌아가기" }) })
+    /* @__PURE__ */ jsx$1(Button, { color: "black", variant: "primary", onClick: goToHome, children: /* @__PURE__ */ jsx$1(Text, { varient: "body", children: "장바구니로 돌아가기" }) })
   ] });
 }
 const router = createBrowserRouter(
